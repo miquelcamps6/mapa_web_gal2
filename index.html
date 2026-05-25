@@ -1,0 +1,270 @@
+<!DOCTYPE html>
+<html lang="ca">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Mapa Interactiu GAL i GALP </title>
+
+    <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <style>
+        body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
+        #mapa { height: 100vh; width: 100%; } /* Ocupa tota la pantalla */
+        
+        /* Estils personalitzats pels popups per distingir-los visualment */
+        .popup-gal h3 { color: #859198; margin-bottom: 5px; }
+        .popup-galp h3 { color: #1F78D1; margin-bottom: 5px; }
+
+        .map-status {
+            position: absolute;
+            top: 12px;
+            left: 12px;
+            z-index: 1000;
+            padding: 8px 12px;
+            background: rgba(255, 255, 255, 0.95);
+            border-radius: 6px;
+            box-shadow: 0 0 12px rgba(0, 0, 0, 0.16);
+            font-size: 14px;
+            color: #222;
+        }
+
+        .map-status.error {
+            border: 1px solid #e74c3c;
+            color: #c0392b;
+        }
+    </style>
+</head>
+<body>
+
+    <div id="mapa"></div>
+    <div id="mapStatus" class="map-status">Carregant dades...</div>
+
+    <script>
+        // 1. Inicialitzar el mapa
+        var map = L.map('mapa').setView([41.59, 1.6], 8);
+
+        // Pane per mantenir la capa GALP sempre a sobre
+        var galpPane = map.createPane('galpPane');
+        galpPane.style.zIndex = 650;
+
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '© OpenStreetMap contributors'
+        }).addTo(map);
+
+        const statusEl = document.getElementById('mapStatus');
+        let loadedLayers = 0;
+        const totalLayers = 2;
+
+        function showStatus(message, isError = false) {
+            statusEl.textContent = message;
+            statusEl.classList.toggle('error', isError);
+        }
+
+        function layerLoaded() {
+            loadedLayers += 1;
+            if (loadedLayers === totalLayers) {
+                showStatus('Mapa carregat correctament');
+                setTimeout(() => {
+                    statusEl.style.display = 'none';
+                }, 3000);
+            }
+        }
+
+        function loadJson(url) {
+            return fetch(url)
+                .then(response => {
+                    if (!response.ok) {
+                        throw new Error(`No s'ha pogut carregar ${url} (estat ${response.status})`);
+                    }
+                    return response.json();
+                });
+        }
+
+        // ==========================================
+        // 2. CONFIGURACIÓ DE COLORS I ESTILS
+        // ==========================================
+        
+        // Paletes de colors proporcionades
+        const colorsGAL = ['#B1D75B', '#9FC85A', '#DED845', '#CFCB52', '#859198', '#A2B0B7', '#C3CFD6', '#D6E0E5', '#C7D7A3', '#B4BBB9', '#F2F3EC'];
+        const colorsGALP = ['#c9ffff', '#85cbfa', '#2fa5f5', '#0b76cb', '#0e4882'];
+        const galColorMap = new Map();
+        const galpColorMap = new Map();
+
+        function crearClau(feature, index) {
+            return String(feature.properties.GAL || feature.properties.NOM || feature.properties.ID || feature.properties.OBJECTID || feature.properties.OBJECTID_1 || feature.properties.NOM_GAL || feature.properties.CODI || feature.properties.CODI_GAL || index);
+        }
+
+        function assignColorsGAL(data) {
+            data.features.forEach((feature, idx) => {
+                const key = crearClau(feature, idx);
+                if (!galColorMap.has(key)) {
+                    const color = colorsGAL[galColorMap.size % colorsGAL.length];
+                    galColorMap.set(key, color);
+                }
+            });
+        }
+
+        function assignColorsGALP(data) {
+            data.features.forEach((feature, idx) => {
+                const key = feature.properties.GALP || feature.properties.NOM || feature.properties.ID || feature.properties.OBJECTID || feature.properties.OBJECTID_1 || feature.properties.NOM_GAL || feature.properties.CODI || feature.properties.CODI_GAL || idx;
+                if (!galpColorMap.has(key)) {
+                    const color = colorsGALP[galpColorMap.size % colorsGALP.length];
+                    galpColorMap.set(key, color);
+                }
+            });
+        }
+
+        function obtenirColorGAL(feature) {
+            const key = crearClau(feature, feature.properties._galIndex || 0);
+            return galColorMap.get(key) || colorsGAL[feature.properties._galIndex % colorsGAL.length];
+        }
+
+        function obtenirColorGALP(feature) {
+            const key = feature.properties.GALP || feature.properties.NOM || feature.properties.ID || feature.properties.OBJECTID || feature.properties.OBJECTID_1 || feature.properties.NOM_GAL || feature.properties.CODI || feature.properties.CODI_GAL || feature.properties._galpIndex;
+            return galpColorMap.get(key) || colorsGALP[feature.properties._galpIndex % colorsGALP.length];
+        }
+
+        // Funció per donar estil a la capa GAL amb color estable i vora del mateix color
+        function estilGAL(feature) {
+            const colorActual = obtenirColorGAL(feature);
+            return {
+                fillColor: colorActual,
+                weight: 2,
+                opacity: 1,
+                color: colorActual,
+                dashArray: '',
+                fillOpacity: 0.7
+            };
+        }
+
+        // Funció per donar estil a la capa GALP amb la paleta proporcionada
+        function estilGALP(feature) {
+            const colorActual = obtenirColorGALP(feature);
+            return {
+                fillColor: colorActual,
+                weight: 2,
+                opacity: 1,
+                color: colorActual,
+                dashArray: '',
+                fillOpacity: 0.7
+            };
+        }
+
+        // ==========================================
+        // 3. EFECTES HOVER (Ressaltar polígons)
+        // ==========================================
+
+        function ressaltarFeature(e) {
+            var layer = e.target;
+            layer.setStyle({
+                weight: 5,
+                color: '#666',
+                dashArray: '',
+                fillOpacity: 0.7
+            });
+            layer.bringToFront(); // Fa que la vora no quedi tapada pels polígons del costat
+        }
+
+        // Funcions per restaurar l'estil quan el ratolí marxa
+        function restaurarEstilGAL(e) {
+            capaGAL.resetStyle(e.target);
+        }
+
+        function restaurarEstilGALP(e) {
+            capaGALP.resetStyle(e.target);
+        }
+
+        // ==========================================
+        // 4. CONFIGURACIÓ DELS POPUPS DIFERENTS
+        // ==========================================
+
+        function onEachFeatureGAL(feature, layer) {
+            // Obtenim les dades (adapta 'nom' i 'web' a les teves columnes de QGIS)
+            let nom_gal = feature.properties.GAL || feature.properties.NOM || "Gal";
+            let web_gal = feature.properties.pag_web || feature.properties.WEB || "#";
+            
+            // Disseny exclusiu pel GAL
+            let popupContent = `<div class="popup-gal">
+                                    <h3> Grup d'Acció Local </h3>
+                                    <strong>${nom_gal}</strong><br><br>`;
+            if (web_gal !== "#") popupContent += `<a href="${web_gal}" target="_blank">🌐 Visitar pàgina web</a>`;
+            popupContent += `</div>`;
+
+            layer.bindPopup(popupContent);
+
+            // Afegim els esdeveniments del ratolí
+            layer.on({
+                mouseover: ressaltarFeature,
+                mouseout: restaurarEstilGAL
+            });
+        }
+
+        function onEachFeatureGALP(feature, layer) {
+            // Obtenim les dades
+            let nom_galp = feature.properties.GALP || feature.properties.NOM || "Nom GALP desconegut";
+            let web_galp = feature.properties.pag_web || feature.properties.WEB || "#";
+            
+            // Disseny exclusiu pel GALP
+           let popupContent = `<div class="popup-galp">
+                                    <h3> Grup d'Acció Local Pesquer </h3>
+                                    <strong>${nom_galp}</strong><br><br>`;
+            if (web_galp !== "#") popupContent += `<a href="${web_galp}" target="_blank">🌐 Visitar pàgina web</a>`;
+            popupContent += `</div>`;
+
+            layer.bindPopup(popupContent);
+
+            // Afegim els esdeveniments del ratolí
+            layer.on({
+                mouseover: ressaltarFeature,
+                mouseout: restaurarEstilGALP
+            });
+        }
+
+        // ==========================================
+        // 5. CARREGAR LES DADES
+        // ==========================================
+
+        let capaGAL;
+        let capaGALP;
+
+        // Carregar GAL
+        loadJson('gal_data.geojson')
+            .then(data => {
+                data.features.forEach((feature, idx) => {
+                    feature.properties._galIndex = idx;
+                });
+                assignColorsGAL(data);
+                capaGAL = L.geoJSON(data, {
+                    style: estilGAL,
+                    onEachFeature: onEachFeatureGAL
+                }).addTo(map);
+                layerLoaded();
+            })
+            .catch(err => {
+                console.error('Error carregant GAL:', err);
+                showStatus(`Error carregant GAL: ${err.message}`, true);
+            });
+
+        // Carregar GALP
+        loadJson('galp_data.geojson')
+            .then(data => {
+                data.features.forEach((feature, idx) => {
+                    feature.properties._galpIndex = idx;
+                });
+                assignColorsGALP(data);
+                capaGALP = L.geoJSON(data, {
+                    pane: 'galpPane',
+                    style: estilGALP,
+                    onEachFeature: onEachFeatureGALP
+                }).addTo(map).bringToFront();
+                layerLoaded();
+            })
+            .catch(err => {
+                console.error('Error carregant GALP:', err);
+                showStatus(`Error carregant GALP: ${err.message}`, true);
+            });
+
+    </script>
+</body>
+</html>
