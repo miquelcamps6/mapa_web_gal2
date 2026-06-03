@@ -7,7 +7,7 @@
 
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
-
+    
     <style>
         body { margin: 0; padding: 0; font-family: Arial, sans-serif; }
         #mapa { height: 100vh; width: 100%; } /* Ocupa tota la pantalla */
@@ -127,7 +127,72 @@
 
         // Funció per donar estil a la capa GAL amb color estable i vora del mateix color
         function estilGAL(feature) {
-            const colorActual = obtenirColorGAL(feature);
+            console.log("Propietats del polígon:", feature.properties);
+            let colorActual;
+            // 1. Obtenim el número del camp N.GAL (es canvia el punt per un claudàtor si el camp té caràcters especials)
+            // Nota: Si a QGIS el camp es diu literalment "N.GAL", en JavaScript s'ha d'escriure així:
+            let codiGAL = Number(feature.properties['N. GAL']);
+
+            // 2. Creem un diccionari per saber quin número correspon a cada lloc
+            // Això ho fas un sol cop i et serveix de guia humana
+
+            const nomsGAL = {
+                1: "Associació pel Desenvolupament Rural de la Catalunya Central",
+                2: "Associació per al Desenvolupament Rural Integral de la zona NordOriental de Catalunya",
+                3: "Associació Leader Ripollès Ges Bisaura",
+                4: "Consorci Leader de Desenvolupament Rural del Camp",
+                5: "Consorci GAL Alt Urgell Cerdanya",
+                6: "Consorci per al Desenvolupament del Baix Ebre i Montsià",
+                7: "Associació Leader de Ponent",
+                8: "Consorci Grup Acció Local Noguera-Segrià Nord",
+                9: "Consorci Leader Pirineu Occidental",
+                10: "Consorci per al Desenvolupament de la Catalunya Central",
+                11: "Consorci Intercomarcal Iniciatives Socioeconòmiques"
+            };
+            // 3. Convertim el número en el nom utilitzant el diccionari
+            let nomTerritori = nomsGAL[codiGAL];
+            
+            // 4. Ara fem el switch amb els noms (molt més visual i difícil d'equivocar-se!)
+
+            switch (nomTerritori) {
+                case "Associació pel Desenvolupament Rural de la Catalunya Central":
+                    colorActual = '#777777';
+                    break;
+                case "Associació per al Desenvolupament Rural Integral de la zona NordOriental de Catalunya":
+                    colorActual = '#f6dd00';
+                    break;
+                case "Associació Leader Ripollès Ges Bisaura":
+                    colorActual = '#98b71b';
+                    break;
+                case "Consorci Leader de Desenvolupament Rural del Camp":
+                    colorActual = '#777777';
+                    break;
+                case "Consorci GAL Alt Urgell Cerdanya":
+                    colorActual = '#f6ec90';
+                    break;
+                case "Consorci per al Desenvolupament del Baix Ebre i Montsià":
+                    colorActual = '#d0d0d0';
+                    break;
+                case "Associació Leader de Ponent":
+                    colorActual = '#f6dd00';
+                    break;
+                case "Consorci Grup Acció Local Noguera-Segrià Nord":
+                    colorActual = '#d0d0d0';
+                    break;
+                case "Consorci Leader Pirineu Occidental":
+                    colorActual = '#98b71b';
+                    break;
+                case "Consorci per al Desenvolupament de la Catalunya Central":
+                    colorActual = '#b6db20';
+                    break;
+                case "Consorci Intercomarcal Iniciatives Socioeconòmiques":
+                    colorActual = '#b6db20';
+                    break;
+                default:
+                    // Si és un número que no hem personalitzat, manté el color automàtic
+                    colorActual = obtenirColorGAL(feature);
+            }
+
             return {
                 fillColor: colorActual,
                 weight: 2,
